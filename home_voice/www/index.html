@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Voice</title>
+<style>
+  :root { --bg:#0f1216; --card:#171c22; --line:#262d36; --fg:#e6edf3;
+          --muted:#8b98a5; --accent:#f97316; --ok:#34d399; --warn:#fbbf24; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:.6rem; padding:1rem 1.25rem;
+           border-bottom:1px solid var(--line); }
+  header h1 { font-size:1.1rem; margin:0; font-weight:600; }
+  .dot { width:.7rem; height:.7rem; border-radius:50%; background:var(--muted); }
+  .dot.ok { background:var(--ok); } .dot.warn { background:var(--warn); }
+  main { max-width:820px; margin:0 auto; padding:1.25rem; display:grid; gap:1.25rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:1rem 1.25rem; }
+  .card h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.05em;
+             color:var(--muted); margin:0 0 .75rem; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:.35rem 1rem; font-size:.92rem; }
+  .kv b { color:var(--muted); font-weight:500; }
+  #log { background:#0b0e12; border:1px solid var(--line); border-radius:8px;
+         padding:.75rem; min-height:120px; white-space:pre-wrap; font-size:.92rem;
+         line-height:1.45; }
+  .row { display:flex; gap:.6rem; margin-top:.75rem; }
+  input { flex:1; background:#0b0e12; border:1px solid var(--line); color:var(--fg);
+          border-radius:8px; padding:.6rem .8rem; font-size:.95rem; }
+  button { background:var(--accent); color:#0b0e12; border:0; border-radius:8px;
+           padding:.6rem 1.1rem; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="statusDot"></span>
+  <h1>Home Voice</h1>
+</header>
+<main>
+  <section class="card">
+    <h2>Status</h2>
+    <div class="kv">
+      <b>Modell</b><span id="mModel">…</span>
+      <b>Bereit</b><span id="mReady">…</span>
+      <b>Kontext</b><span id="mCtx">…</span>
+      <b>Threads</b><span id="mThreads">…</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Test-Konsole</h2>
+    <div id="log">Stelle eine Frage, um das lokale Modell zu testen.</div>
+    <div class="row">
+      <input id="prompt" placeholder="z. B. Erklär mir kurz was du bist"
+             autocomplete="off">
+      <button id="send">Senden</button>
+    </div>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  async function refreshStatus() {
+    try {
+      const r = await fetch('./api/status');
+      const s = await r.json();
+      $('mModel').textContent = s.model_label;
+      $('mReady').textContent = s.ready ? 'ja' : 'lädt Modell …';
+      $('mCtx').textContent = s.context_size + ' Token';
+      $('mThreads').textContent = s.threads;
+      const dot = $('statusDot');
+      dot.className = 'dot ' + (s.ready ? 'ok' : 'warn');
+    } catch (e) {
+      $('statusDot').className = 'dot';
+    }
+  }
+
+  async function send() {
+    const promptEl = $('prompt'), btn = $('send'), log = $('log');
+    const text = promptEl.value.trim();
+    if (!text) return;
+    btn.disabled = true;
+    log.textContent = '';
+    try {
+      const resp = await fetch('./v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'local',
+          stream: true,
+          messages: [{ role: 'user', content: text }],
+        }),
+      });
+      if (!resp.ok) { log.textContent = 'Fehler ' + resp.status +
+        ' — Modell evtl. noch nicht geladen.'; btn.disabled = false; return; }
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith('data:')) continue;
+          const payload = t.slice(5).trim();
+          if (payload === '[DONE]') continue;
+          try {
+            const delta = JSON.parse(payload).choices?.[0]?.delta?.content;
+            if (delta) log.textContent += delta;
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      log.textContent = 'Netzwerkfehler: ' + e.message;
+    }
+    btn.disabled = false;
+  }
+
+  $('send').addEventListener('click', send);
+  $('prompt').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  refreshStatus();
+  setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>
