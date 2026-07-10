@@ -13,10 +13,8 @@ ingress_port: 8099
 # den OpenAI-kompatiblen Endpunkt stabil unter http://<HA-IP>:8099/v1 erreichen.
 ports:
   8099/tcp: 8099
-  10200/tcp: 10200
 ports_description:
   8099/tcp: OpenAI-kompatibler Endpunkt (/v1) + Ingress-Panel
-  10200/tcp: Wyoming-TTS (Kokoro) — als Sprachausgabe-Engine in HA einbinden
 panel_icon: mdi:account-voice
 panel_title: Home Voice
 panel_admin: false
@@ -30,7 +28,6 @@ options:
   temperature: 0.7
   brain_enabled: false
   brain_url: ""
-  tts_enabled: true
 schema:
   model: "list(phi-4-mini|qwen2.5-3b|gemma3-1b)"
   context_size: int(512,32768)
@@ -38,4 +35,3 @@ schema:
   temperature: float(0,2)
   brain_enabled: bool
   brain_url: str?
-  tts_enabled: bool

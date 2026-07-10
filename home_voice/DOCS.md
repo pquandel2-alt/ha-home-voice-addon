@@ -3,29 +3,29 @@
 Ein vollständig **lokaler** Sprachassistent für Home Assistant. Das Add-on startet
 einen llama.cpp-Inferenz-Server mit einem kleinen, schnellen LLM und stellt einen
 **OpenAI-kompatiblen Endpunkt** bereit, den Home Assistant als Conversation-Agent
-(Assist) nutzen kann. Zusätzlich läuft eine lokale **Kokoro-Sprachausgabe**
-(Wyoming-Protokoll) sowie ein zweistufiges **Gedächtnis** (Ambient-Kontext +
-optionaler Brain-Recall).
+(Assist) nutzen kann. Dazu kommt ein zweistufiges **Gedächtnis** (Ambient-Kontext +
+optionaler Brain-Recall). Die **Sprachausgabe** übernimmt das separate
+**Piper-Add-on** (deutsche Stimmen, gleiches Wyoming-Protokoll).
 
 Keine Cloud, keine API-Keys, keine laufenden Kosten.
 
 ## Ressourcen-Hinweis (wichtig)
 
 Der Docker-Build kompiliert llama.cpp aus dem Quellcode und lädt danach ein
-GGUF-Modell (~1–2,5 GB) sowie optional das Kokoro-TTS-Modell (~350 MB) herunter.
-Beides ist auf schwacher Hardware spürbar CPU-/RAM-intensiv. Da Add-on-Build und
--Betrieb auf derselben Maschine wie Home Assistant selbst laufen, kann eine zu
-aggressive Konfiguration den gesamten Host (inkl. HA Core) instabil machen.
+GGUF-Modell (~1–2,5 GB) herunter. Das ist auf schwacher Hardware spürbar
+CPU-/RAM-intensiv. Da Add-on-Build und -Betrieb auf derselben Maschine wie Home
+Assistant selbst laufen, kann eine zu aggressive Konfiguration den gesamten
+Host (inkl. HA Core) instabil machen.
 
 - `threads` **klein starten** (Default `2`) und erst hochsetzen, wenn geprüft
   wurde, wie viele vCPUs die HA-VM tatsächlich hat und wie viel davon übrig ist.
 - Der Compile-Schritt begrenzt sich selbst auf 2 parallele Jobs (`-j2`), um
   RAM-Spitzen beim ersten Add-on-Build zu vermeiden.
-- LLM- und TTS-Download/-Ladevorgang laufen bewusst **nacheinander**, nicht
-  gleichzeitig, um Lastspitzen beim ersten Start zu vermeiden.
+- TTS läuft in einem separaten Add-on (Piper), nicht in diesem — dadurch
+  entfallen schwere ML-Pakete und ein zweiter Modell-Download beim Start.
 - Falls das Add-on beim Start weiterhin CPU/RAM in die Höhe treibt: Add-on
-  stoppen, `threads` reduzieren und/oder `tts_enabled: false` testweise setzen,
-  um LLM- und TTS-Last getrennt zu beurteilen.
+  stoppen, `threads` und/oder `context_size` reduzieren und ein kleineres Modell
+  (`gemma3-1b`) testen.
 
 ## Konfiguration
 
@@ -35,14 +35,12 @@ aggressive Konfiguration den gesamten Host (inkl. HA Core) instabil machen.
 | `context_size` | `4096` | Kontextfenster in Token |
 | `threads` | `6` | CPU-Threads (auf die zugewiesenen vCPUs abstimmen) |
 | `temperature` | `0.7` | Sampling-Temperatur |
-| `tts_enabled` | `true` | Kokoro-Sprachausgabe (Wyoming, Port 10200) aktivieren |
 | `brain_enabled` | `false` | Gedächtnis-Stufe 2 (semantischer Recall über Brain) aktivieren |
 | `brain_url` | `""` | Basis-URL der Brain-Instanz, z. B. `http://<brain-host>:3000` |
 
-Beim **ersten Start** lädt das Add-on das gewählte LLM (~1–2,5 GB) und bei aktivem
-TTS zusätzlich das Kokoro-Modell (~350 MB) herunter — nach `/data/models` bzw.
-`/data/tts`. Das kann einige Minuten dauern; der Status im Panel zeigt „lädt Modell …“,
-bis alles bereit ist. Downloads bleiben über Neustarts/Updates erhalten.
+Beim **ersten Start** lädt das Add-on das gewählte LLM (~1–2,5 GB) nach
+`/data/models` herunter. Das kann einige Minuten dauern; der Status im Panel zeigt
+„lädt Modell …“, bis es bereit ist. Downloads bleiben über Neustarts/Updates erhalten.
 
 ## Als Assist-Agent in Home Assistant einbinden
 
@@ -55,22 +53,20 @@ bis alles bereit ist. Downloads bleiben über Neustarts/Updates erhalten.
    Conversation-Agent auswählen. Diese Pipeline kann jeder Voice-Satellite
    (z. B. Nabu/DashVoice) nutzen.
 
-## Sprachausgabe (Kokoro, Wyoming) einbinden
+## Sprachausgabe (Piper) einbinden
 
-1. Sicherstellen, dass `tts_enabled: true` gesetzt ist und der Status-Tab
-   „TTS (Kokoro): bereit“ zeigt (erster Start lädt das Modell nach).
-2. **Einstellungen → Geräte & Dienste → Integration hinzufügen → „Wyoming Protocol"**.
-3. Host = `<HA-IP>`, Port = `10200`.
-4. In der Assist-Pipeline als Text-zu-Sprache-Engine auswählen.
+Dieses Add-on liefert bewusst keine eigene TTS mit. Für deutsche Sprachausgabe
+das offizielle **Piper**-Add-on nutzen (deutsche Stimmen, gleiches Wyoming-
+Protokoll, ausgereift und ressourcenschonend):
 
-**Sprachhinweis:** Kokoro-82M unterstützt offiziell Englisch, Japanisch, Mandarin,
-Spanisch, Französisch, Hindi, Italienisch und brasilianisches Portugiesisch —
-**kein Deutsch**. Es existiert eine Community-Fine-Tune für Deutsch
-(`Godelaune/Kokoro-82M-ONNX-German-Martin`), deren Stimmen-Datei aber ein anderes,
-inkompatibles Format (`.npz` statt `.bin`) nutzt und eine eigene Lade-Logik bräuchte.
-Diese wurde bewusst **nicht** ungeprüft eingebaut — Default ist die offizielle
-englische Stimme (`af_heart`). Für deutsche Sprachausgabe bleibt vorerst z. B.
-Piper (bereits über HA verfügbar) die bessere Wahl.
+1. **Einstellungen → Add-ons → Add-on-Store → „Piper"** installieren und starten.
+2. Piper meldet sich automatisch als Wyoming-TTS-Dienst; ggf. über
+   **Geräte & Dienste → „Wyoming Protocol"** hinzufügen.
+3. Deutsche Stimme wählen, z. B. `de_DE-thorsten`.
+4. In der Assist-Pipeline (siehe oben) Piper als **Text-zu-Sprache**-Engine setzen.
+
+So bilden dieses LLM-Add-on (Sprachverständnis/Antwort) und Piper (Sprachausgabe)
+gemeinsam eine vollständige, komplett lokale und deutschsprachige Assist-Pipeline.
 
 ## Gedächtnis
 
@@ -108,4 +104,3 @@ Piper (bereits über HA verfügbar) die bessere Wahl.
 | `/api/status` | Add-on-Status fürs Panel |
 | `/api/memory` | Ambient-Kontext (Stufe 1) als JSON |
 | `/api/brain_test?q=...` | Manueller Test des Brain-Recalls (Stufe 2) |
-| TCP `10200` | Wyoming-TTS (Kokoro) — separat von Ingress, für HA/Voice-Satellites |

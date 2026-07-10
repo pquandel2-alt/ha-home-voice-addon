@@ -3,17 +3,14 @@ FROM $BUILD_FROM
 
 # Build-Toolchain für llama.cpp + Python-Runtime für unseren aiohttp-Server.
 # libcurl wird für den direkten HuggingFace-Download (--hf-repo/--hf-file) gebraucht.
-# espeak-ng ist Kokoros Phonemizer-Fallback für unbekannte/OOV-Wörter.
+# TTS liefert dieses Add-on nicht selbst — dafür wird das Piper-Add-on genutzt.
+# Dadurch entfallen die schweren ML-Pakete (onnxruntime/kokoro-onnx) komplett,
+# was Image-Größe und RAM-/CPU-Last beim ersten Start deutlich reduziert.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake git ca-certificates \
         libcurl4-openssl-dev libgomp1 \
-        python3 python3-pip python3-aiohttp espeak-ng \
+        python3 python3-aiohttp \
     && rm -rf /var/lib/apt/lists/*
-
-# Debian bookworm sperrt globale pip-Installs per PEP 668 (extern verwaltete
-# Umgebung) — im Add-on-Container ist das ok, da es keine System-Pakete stört.
-RUN pip3 install --no-cache-dir --break-system-packages \
-        wyoming kokoro-onnx onnxruntime soundfile numpy
 
 # llama.cpp bauen — GGML_NATIVE=OFF + AVX2=ON: portabel, aber für den
 # Ziel-Mini-PC (Intel i5-12450H, AVX2 vorhanden) optimiert. Kein -march=native,
@@ -38,7 +35,6 @@ COPY server.py /server.py
 COPY ha_client.py /ha_client.py
 COPY context_cache.py /context_cache.py
 COPY brain_client.py /brain_client.py
-COPY tts_server.py /tts_server.py
 COPY www /www
 RUN chmod a+x /run.sh
 

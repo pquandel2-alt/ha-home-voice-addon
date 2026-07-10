@@ -69,7 +69,6 @@
         <b>Kontext</b><span id="mCtx">…</span>
         <b>Threads</b><span id="mThreads">…</span>
         <b>HA-Verbindung</b><span id="mHa">…</span>
-        <b>TTS (Kokoro)</b><span id="mTts">…</span>
         <b>Brain</b><span id="mBrain">…</span>
       </div>
     </div>
@@ -112,14 +111,12 @@
       <ul class="compact" id="modelList"></ul>
     </div>
     <div class="card">
-      <h2>Sprachausgabe (Kokoro TTS)</h2>
-      <div class="kv">
-        <b>Stimme</b><span>af_heart (Englisch, US)</span>
-        <b>Deutsch</b><span class="badge warn">nicht offiziell unterstützt</span>
-      </div>
-      <p class="hint">Kokoro-82M unterstützt offiziell Englisch, Japanisch, Mandarin, Spanisch,
-        Französisch, Hindi, Italienisch und brasilianisches Portugiesisch — kein Deutsch.
-        Als Wyoming-TTS-Engine unter <code>&lt;HA-IP&gt;:10200</code> in HA einbindbar.</p>
+      <h2>Sprachausgabe (TTS)</h2>
+      <p class="hint">Dieses Add-on liefert keine eigene TTS mit. Für deutsche Sprachausgabe
+        das offizielle <b>Piper</b>-Add-on installieren (Add-on-Store → Piper) und in der
+        Assist-Pipeline als Text-zu-Sprache-Engine wählen — z. B. die Stimme
+        <code>de_DE-thorsten</code>. Piper und dieses LLM-Add-on ergänzen sich in derselben
+        Assist-Pipeline.</p>
     </div>
     <div class="card">
       <h2>Gedächtnis (Brain)</h2>
@@ -158,11 +155,6 @@
       const haEl = document.createElement('span');
       badge(haEl, s.ha_connected, 'verbunden', 'getrennt');
       $('mHa').replaceChildren(haEl);
-
-      const ttsEl = document.createElement('span');
-      badge(ttsEl, s.tts_enabled && s.tts_ready, 'bereit',
-            s.tts_enabled ? 'lädt …' : 'deaktiviert');
-      $('mTts').replaceChildren(ttsEl);
 
       const brainEl = document.createElement('span');
       badge(brainEl, s.brain_enabled && s.brain_reachable, 'aktiv',

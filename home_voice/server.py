@@ -1,16 +1,17 @@
 """Home Voice Add-on backend.
 
 Startet einen lokalen llama.cpp-Inferenz-Server (OpenAI-kompatibel) als
-Subprozess, einen Wyoming-TTS-Server (Kokoro) und einen aiohttp-Server davor,
-der:
+Subprozess und einen aiohttp-Server davor, der:
   * `/v1/chat/completions`  Kontext-Injektion (Stufe 1 Ambient + Stufe 2
      Brain-Recall) davorschaltet, dann an llama-server weiterreicht,
   * `/v1/*` (sonst)  transparent an llama-server durchreicht,
   * `/api/status` / `/api/memory`  Infos fürs Panel liefert,
   * `/`  das Ingress-Panel ausliefert.
 
-Alle fünf Rollout-Schritte aus dem Plan sind hier zusammengeführt: Inferenz-
-Server, Kokoro-TTS (Wyoming), Ambient-Kontext-Cache, Brain-Recall + Lern-Loop.
+Sprachausgabe (TTS) liefert dieses Add-on bewusst NICHT selbst mit: dafür wird
+das offizielle Piper-Add-on genutzt (deutsche Stimmen, gleiches Wyoming-
+Protokoll, in HA als TTS-Engine wählbar). Das spart Ressourcen und deutsche
+Aussprache ist damit ab Werk gelöst.
 """
 
 import asyncio
@@ -24,7 +25,6 @@ from aiohttp import ClientSession, ClientTimeout, web
 from brain_client import BrainClient, is_question
 from context_cache import AmbientContext
 from ha_client import HAClient
-from tts_server import KokoroEngine, run_wyoming_server
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 _LOG = logging.getLogger("home_voice")
@@ -86,7 +86,6 @@ THREADS = int(_OPTIONS.get("threads", 2))
 TEMPERATURE = float(_OPTIONS.get("temperature", 0.7))
 BRAIN_ENABLED = bool(_OPTIONS.get("brain_enabled", False))
 BRAIN_URL = _OPTIONS.get("brain_url", "") or ""
-TTS_ENABLED = bool(_OPTIONS.get("tts_enabled", True))
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +177,6 @@ async def handle_status(request):
     """Panel-Status: gewähltes Modell, Health, verfügbare Modelle."""
     llama: LlamaServer = request.app["llama"]
     ha: HAClient = request.app.get("ha")
-    tts: KokoroEngine = request.app.get("tts")
     brain: BrainClient = request.app.get("brain")
     return web.json_response({
         "model_key": MODEL_KEY,
@@ -187,8 +185,6 @@ async def handle_status(request):
         "threads": THREADS,
         "ready": llama.ready,
         "ha_connected": bool(ha and ha.ws and not ha.ws.closed),
-        "tts_enabled": TTS_ENABLED,
-        "tts_ready": bool(tts and tts.ready),
         "brain_enabled": BRAIN_ENABLED,
         "brain_reachable": await brain.health() if brain else False,
         "available_models": [
@@ -320,6 +316,7 @@ async def async_main():
     llama = LlamaServer()
     app["llama"] = llama
     await llama.start()
+    asyncio.create_task(llama.wait_healthy(session))
 
     ha = HAClient(session)
     app["ha"] = ha
@@ -336,27 +333,6 @@ async def async_main():
         _LOG.info("Brain-Anbindung aktiv: %s", BRAIN_URL)
     else:
         app["brain"] = None
-
-    tts = KokoroEngine()
-    app["tts"] = tts
-    wyoming_task = None
-
-    async def _boot_sequence():
-        """Bewusst SEQUENZIELL statt parallel: LLM-Download/Ladevorgang und
-        Kokoro-Download/Ladevorgang gleichzeitig laufen zu lassen hat auf einer
-        ressourcen-knappen VM CPU/RAM in die Höhe getrieben und den Host
-        instabil gemacht. Daher startet TTS erst NACHDEM llama-server bereit ist."""
-        healthy = await llama.wait_healthy(session)
-        if not healthy or not TTS_ENABLED:
-            return
-        try:
-            await tts.ensure_downloaded(session)
-            tts.load()
-            await run_wyoming_server(tts)
-        except Exception as exc:  # noqa: BLE001
-            _LOG.error("Kokoro-TTS konnte nicht gestartet werden: %s", exc)
-
-    wyoming_task = asyncio.create_task(_boot_sequence())
 
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/status", handle_status)
@@ -380,8 +356,6 @@ async def async_main():
     await stop_event.wait()
     _LOG.info("Shutting down …")
 
-    if wyoming_task:
-        wyoming_task.cancel()
     ctx = app.get("context")
     if ctx:
         await ctx.stop()
