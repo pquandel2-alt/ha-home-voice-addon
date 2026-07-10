@@ -15,7 +15,12 @@
   header h1 { font-size:1.1rem; margin:0; font-weight:600; }
   .dot { width:.7rem; height:.7rem; border-radius:50%; background:var(--muted); }
   .dot.ok { background:var(--ok); } .dot.warn { background:var(--warn); }
+  nav { display:flex; gap:.25rem; padding:0 1.25rem; border-bottom:1px solid var(--line); }
+  nav button { background:none; border:0; color:var(--muted); padding:.75rem 1rem;
+               font-size:.9rem; cursor:pointer; border-bottom:2px solid transparent; }
+  nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
   main { max-width:820px; margin:0 auto; padding:1.25rem; display:grid; gap:1.25rem; }
+  .tab { display:none; } .tab.active { display:grid; gap:1.25rem; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
           padding:1rem 1.25rem; }
   .card h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.05em;
@@ -25,12 +30,21 @@
   #log { background:#0b0e12; border:1px solid var(--line); border-radius:8px;
          padding:.75rem; min-height:120px; white-space:pre-wrap; font-size:.92rem;
          line-height:1.45; }
+  #memoryPre { background:#0b0e12; border:1px solid var(--line); border-radius:8px;
+               padding:.75rem; white-space:pre-wrap; font-size:.85rem; line-height:1.45;
+               margin:0; }
   .row { display:flex; gap:.6rem; margin-top:.75rem; }
   input { flex:1; background:#0b0e12; border:1px solid var(--line); color:var(--fg);
           border-radius:8px; padding:.6rem .8rem; font-size:.95rem; }
   button { background:var(--accent); color:#0b0e12; border:0; border-radius:8px;
            padding:.6rem 1.1rem; font-weight:600; cursor:pointer; }
   button:disabled { opacity:.5; cursor:not-allowed; }
+  .badge { display:inline-block; padding:.15rem .55rem; border-radius:999px;
+           font-size:.78rem; background:#262d36; color:var(--muted); }
+  .badge.ok { background:#0f2e22; color:var(--ok); }
+  .badge.warn { background:#3a2c0a; color:var(--warn); }
+  .hint { color:var(--muted); font-size:.82rem; margin-top:.5rem; }
+  ul.compact { margin:.25rem 0 0; padding-left:1.1rem; font-size:.9rem; }
 </style>
 </head>
 <body>
@@ -38,29 +52,99 @@
   <span class="dot" id="statusDot"></span>
   <h1>Home Voice</h1>
 </header>
+<nav>
+  <button class="tab-btn active" data-tab="status">Status</button>
+  <button class="tab-btn" data-tab="memory">Gedächtnis</button>
+  <button class="tab-btn" data-tab="console">Test-Konsole</button>
+  <button class="tab-btn" data-tab="settings">Einstellungen</button>
+</nav>
 <main>
-  <section class="card">
-    <h2>Status</h2>
-    <div class="kv">
-      <b>Modell</b><span id="mModel">…</span>
-      <b>Bereit</b><span id="mReady">…</span>
-      <b>Kontext</b><span id="mCtx">…</span>
-      <b>Threads</b><span id="mThreads">…</span>
+
+  <section class="tab active" id="tab-status">
+    <div class="card">
+      <h2>Status</h2>
+      <div class="kv">
+        <b>Modell</b><span id="mModel">…</span>
+        <b>Bereit</b><span id="mReady">…</span>
+        <b>Kontext</b><span id="mCtx">…</span>
+        <b>Threads</b><span id="mThreads">…</span>
+        <b>HA-Verbindung</b><span id="mHa">…</span>
+        <b>TTS (Kokoro)</b><span id="mTts">…</span>
+        <b>Brain</b><span id="mBrain">…</span>
+      </div>
     </div>
   </section>
 
-  <section class="card">
-    <h2>Test-Konsole</h2>
-    <div id="log">Stelle eine Frage, um das lokale Modell zu testen.</div>
-    <div class="row">
-      <input id="prompt" placeholder="z. B. Erklär mir kurz was du bist"
-             autocomplete="off">
-      <button id="send">Senden</button>
+  <section class="tab" id="tab-memory">
+    <div class="card">
+      <h2>Ambient-Kontext (Stufe 1 — live, alle 60s aktualisiert)</h2>
+      <pre id="memoryPre">Lädt …</pre>
+      <p class="hint">Das ist der Kontext-Block, der jeder Anfrage kostenlos vorangestellt wird
+        (Anwesenheit, Wetter, To-Dos, letzte Ereignisse) — siehe Latenz-Architektur im Plan.</p>
+    </div>
+    <div class="card">
+      <h2>Brain-Recall testen (Stufe 2)</h2>
+      <div class="row">
+        <input id="brainQ" placeholder="z. B. Was weißt du über mein Wohnzimmer?" autocomplete="off">
+        <button id="brainSend">Testen</button>
+      </div>
+      <pre id="brainResult" class="hint" style="margin-top:.75rem;"></pre>
     </div>
   </section>
+
+  <section class="tab" id="tab-console">
+    <div class="card">
+      <h2>Test-Konsole</h2>
+      <div id="log">Stelle eine Frage, um das lokale Modell zu testen.</div>
+      <div class="row">
+        <input id="prompt" placeholder="z. B. Erklär mir kurz was du bist"
+               autocomplete="off">
+        <button id="send">Senden</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-settings">
+    <div class="card">
+      <h2>Modell</h2>
+      <p class="hint">Modell-Wechsel erfolgt über die Add-on-Konfiguration
+        (Einstellungen-Tab des Add-ons in HA) und einen Neustart.</p>
+      <ul class="compact" id="modelList"></ul>
+    </div>
+    <div class="card">
+      <h2>Sprachausgabe (Kokoro TTS)</h2>
+      <div class="kv">
+        <b>Stimme</b><span>af_heart (Englisch, US)</span>
+        <b>Deutsch</b><span class="badge warn">nicht offiziell unterstützt</span>
+      </div>
+      <p class="hint">Kokoro-82M unterstützt offiziell Englisch, Japanisch, Mandarin, Spanisch,
+        Französisch, Hindi, Italienisch und brasilianisches Portugiesisch — kein Deutsch.
+        Als Wyoming-TTS-Engine unter <code>&lt;HA-IP&gt;:10200</code> in HA einbindbar.</p>
+    </div>
+    <div class="card">
+      <h2>Gedächtnis (Brain)</h2>
+      <p class="hint">Aktivierung/URL über die Add-on-Konfiguration (<code>brain_enabled</code>,
+        <code>brain_url</code>). Status siehe Status-Tab.</p>
+    </div>
+  </section>
+
 </main>
 <script>
   const $ = (id) => document.getElementById(id);
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+      btn.classList.add('active');
+      $('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  function badge(el, ok, textOk, textBad) {
+    el.textContent = ok ? textOk : textBad;
+    el.className = 'badge ' + (ok ? 'ok' : 'warn');
+  }
 
   async function refreshStatus() {
     try {
@@ -70,10 +154,58 @@
       $('mReady').textContent = s.ready ? 'ja' : 'lädt Modell …';
       $('mCtx').textContent = s.context_size + ' Token';
       $('mThreads').textContent = s.threads;
+
+      const haEl = document.createElement('span');
+      badge(haEl, s.ha_connected, 'verbunden', 'getrennt');
+      $('mHa').replaceChildren(haEl);
+
+      const ttsEl = document.createElement('span');
+      badge(ttsEl, s.tts_enabled && s.tts_ready, 'bereit',
+            s.tts_enabled ? 'lädt …' : 'deaktiviert');
+      $('mTts').replaceChildren(ttsEl);
+
+      const brainEl = document.createElement('span');
+      badge(brainEl, s.brain_enabled && s.brain_reachable, 'aktiv',
+            s.brain_enabled ? 'nicht erreichbar' : 'deaktiviert');
+      $('mBrain').replaceChildren(brainEl);
+
+      const list = $('modelList');
+      list.innerHTML = '';
+      for (const m of (s.available_models || [])) {
+        const li = document.createElement('li');
+        li.textContent = m.label + (m.key === s.model_key ? '  (aktiv)' : '');
+        list.appendChild(li);
+      }
+
       const dot = $('statusDot');
       dot.className = 'dot ' + (s.ready ? 'ok' : 'warn');
     } catch (e) {
       $('statusDot').className = 'dot';
+    }
+  }
+
+  async function refreshMemory() {
+    try {
+      const r = await fetch('./api/memory');
+      const m = await r.json();
+      $('memoryPre').textContent = m.available
+        ? m.prompt_preview
+        : 'Ambient-Kontext nicht verfügbar (keine HA-Verbindung).';
+    } catch (e) {
+      $('memoryPre').textContent = 'Fehler beim Laden: ' + e.message;
+    }
+  }
+
+  async function testBrain() {
+    const q = $('brainQ').value.trim();
+    if (!q) return;
+    $('brainResult').textContent = 'Fragt Brain …';
+    try {
+      const r = await fetch('./api/brain_test?q=' + encodeURIComponent(q));
+      const d = await r.json();
+      $('brainResult').textContent = d.ok ? d.result : '(kein Ergebnis / Brain deaktiviert)';
+    } catch (e) {
+      $('brainResult').textContent = 'Fehler: ' + e.message;
     }
   }
 
@@ -123,8 +255,13 @@
 
   $('send').addEventListener('click', send);
   $('prompt').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  $('brainSend').addEventListener('click', testBrain);
+  $('brainQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') testBrain(); });
+
   refreshStatus();
+  refreshMemory();
   setInterval(refreshStatus, 5000);
+  setInterval(refreshMemory, 15000);
 </script>
 </body>
 </html>

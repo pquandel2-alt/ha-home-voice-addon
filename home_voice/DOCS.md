@@ -3,9 +3,29 @@
 Ein vollständig **lokaler** Sprachassistent für Home Assistant. Das Add-on startet
 einen llama.cpp-Inferenz-Server mit einem kleinen, schnellen LLM und stellt einen
 **OpenAI-kompatiblen Endpunkt** bereit, den Home Assistant als Conversation-Agent
-(Assist) nutzen kann.
+(Assist) nutzen kann. Zusätzlich läuft eine lokale **Kokoro-Sprachausgabe**
+(Wyoming-Protokoll) sowie ein zweistufiges **Gedächtnis** (Ambient-Kontext +
+optionaler Brain-Recall).
 
 Keine Cloud, keine API-Keys, keine laufenden Kosten.
+
+## Ressourcen-Hinweis (wichtig)
+
+Der Docker-Build kompiliert llama.cpp aus dem Quellcode und lädt danach ein
+GGUF-Modell (~1–2,5 GB) sowie optional das Kokoro-TTS-Modell (~350 MB) herunter.
+Beides ist auf schwacher Hardware spürbar CPU-/RAM-intensiv. Da Add-on-Build und
+-Betrieb auf derselben Maschine wie Home Assistant selbst laufen, kann eine zu
+aggressive Konfiguration den gesamten Host (inkl. HA Core) instabil machen.
+
+- `threads` **klein starten** (Default `2`) und erst hochsetzen, wenn geprüft
+  wurde, wie viele vCPUs die HA-VM tatsächlich hat und wie viel davon übrig ist.
+- Der Compile-Schritt begrenzt sich selbst auf 2 parallele Jobs (`-j2`), um
+  RAM-Spitzen beim ersten Add-on-Build zu vermeiden.
+- LLM- und TTS-Download/-Ladevorgang laufen bewusst **nacheinander**, nicht
+  gleichzeitig, um Lastspitzen beim ersten Start zu vermeiden.
+- Falls das Add-on beim Start weiterhin CPU/RAM in die Höhe treibt: Add-on
+  stoppen, `threads` reduzieren und/oder `tts_enabled: false` testweise setzen,
+  um LLM- und TTS-Last getrennt zu beurteilen.
 
 ## Konfiguration
 
@@ -15,17 +35,18 @@ Keine Cloud, keine API-Keys, keine laufenden Kosten.
 | `context_size` | `4096` | Kontextfenster in Token |
 | `threads` | `6` | CPU-Threads (auf die zugewiesenen vCPUs abstimmen) |
 | `temperature` | `0.7` | Sampling-Temperatur |
-| `brain_enabled` | `false` | Gedächtnis über Brain aktivieren (spätere Ausbaustufe) |
-| `brain_url` | `""` | URL der Brain-Instanz (spätere Ausbaustufe) |
+| `tts_enabled` | `true` | Kokoro-Sprachausgabe (Wyoming, Port 10200) aktivieren |
+| `brain_enabled` | `false` | Gedächtnis-Stufe 2 (semantischer Recall über Brain) aktivieren |
+| `brain_url` | `""` | Basis-URL der Brain-Instanz, z. B. `http://<brain-host>:3000` |
 
-Beim **ersten Start** lädt das Add-on das gewählte Modell (~1–2,5 GB) nach
-`/data/models` herunter. Das kann einige Minuten dauern — der Status im Panel zeigt
-„lädt Modell …", bis das Modell bereit ist. Downloads bleiben über Neustarts/Updates
-erhalten.
+Beim **ersten Start** lädt das Add-on das gewählte LLM (~1–2,5 GB) und bei aktivem
+TTS zusätzlich das Kokoro-Modell (~350 MB) herunter — nach `/data/models` bzw.
+`/data/tts`. Das kann einige Minuten dauern; der Status im Panel zeigt „lädt Modell …“,
+bis alles bereit ist. Downloads bleiben über Neustarts/Updates erhalten.
 
 ## Als Assist-Agent in Home Assistant einbinden
 
-1. Add-on starten, im Panel warten bis **Bereit = ja**.
+1. Add-on starten, im Panel (Status-Tab) warten bis **Bereit = ja**.
 2. **Einstellungen → Geräte & Dienste → Integration hinzufügen → „OpenAI Conversation"**
    (oder eine kompatible lokale LLM-Integration).
 3. Als **Base-URL** eintragen: `http://<HA-IP>:8099/v1`
@@ -34,15 +55,57 @@ erhalten.
    Conversation-Agent auswählen. Diese Pipeline kann jeder Voice-Satellite
    (z. B. Nabu/DashVoice) nutzen.
 
+## Sprachausgabe (Kokoro, Wyoming) einbinden
+
+1. Sicherstellen, dass `tts_enabled: true` gesetzt ist und der Status-Tab
+   „TTS (Kokoro): bereit“ zeigt (erster Start lädt das Modell nach).
+2. **Einstellungen → Geräte & Dienste → Integration hinzufügen → „Wyoming Protocol"**.
+3. Host = `<HA-IP>`, Port = `10200`.
+4. In der Assist-Pipeline als Text-zu-Sprache-Engine auswählen.
+
+**Sprachhinweis:** Kokoro-82M unterstützt offiziell Englisch, Japanisch, Mandarin,
+Spanisch, Französisch, Hindi, Italienisch und brasilianisches Portugiesisch —
+**kein Deutsch**. Es existiert eine Community-Fine-Tune für Deutsch
+(`Godelaune/Kokoro-82M-ONNX-German-Martin`), deren Stimmen-Datei aber ein anderes,
+inkompatibles Format (`.npz` statt `.bin`) nutzt und eine eigene Lade-Logik bräuchte.
+Diese wurde bewusst **nicht** ungeprüft eingebaut — Default ist die offizielle
+englische Stimme (`af_heart`). Für deutsche Sprachausgabe bleibt vorerst z. B.
+Piper (bereits über HA verfügbar) die bessere Wahl.
+
+## Gedächtnis
+
+- **Stufe 1 (Ambient-Kontext):** immer aktiv, kostenlos. Alle 60s im Hintergrund
+  aktualisiert (Anwesenheit, Wetter, To-Dos) plus live nachgeführtes Ereignis-Log.
+  Wird jeder Anfrage automatisch als Kontext vorangestellt.
+- **Stufe 2 (Brain-Recall):** nur aktiv wenn `brain_enabled: true` und `brain_url`
+  gesetzt sind. Wird nur bei erkennbaren Wissensfragen abgerufen, mit einem
+  Timeout von 1,2s — bei Nichterreichbarkeit wird die Anfrage nicht blockiert,
+  sondern einfach ohne Recall beantwortet.
+- **Ehrlicher Hinweis zur Latenz:** Das Add-on wirkt als Conversation-Agent, den
+  HA *nach* der Spracherkennung (STT) aufruft — es gibt in dieser Position keinen
+  eigenen STT-Schritt, hinter dem sich der Brain-Recall komplett verstecken ließe.
+  Bei Wissensfragen kommt daher der reale (kleine, bounded) Timeout als zusätzliche
+  Latenz oben drauf. Bei allen anderen Befehlen (Ambient-Kontext reicht, oder HA's
+  eingebaute Intents greifen direkt) entstehen keine zusätzlichen Kosten.
+- **Lern-Loop:** Korrekturen/neue Fakten werden aktuell nicht automatisch erkannt
+  und zurückgeschrieben — `brain_client.write_fact()` steht als Baustein bereit,
+  ist aber noch nicht an eine automatische Erkennung "das war eine Korrektur"
+  angebunden. Das ist ein bewusst offen gelassener nächster Schritt.
+
 ## Panel
 
-- **Status:** gewähltes Modell, Bereitschaft, Kontextgröße, Threads.
+- **Status:** gewähltes Modell, Bereitschaft, Kontextgröße, Threads, HA-/TTS-/Brain-Status.
+- **Gedächtnis:** Live-Ansicht des Ambient-Kontexts + Test-Feld für Brain-Recall.
 - **Test-Konsole:** direkt per Text mit dem Modell reden (streamt die Antwort).
+- **Einstellungen:** Modell-Übersicht, TTS-/Brain-Hinweise.
 
 ## Endpunkte
 
 | Pfad | Zweck |
 |------|-------|
-| `/v1/chat/completions` | OpenAI-kompatibel (Streaming unterstützt) |
+| `/v1/chat/completions` | OpenAI-kompatibel, mit Kontext-Injektion (Streaming unterstützt) |
 | `/v1/models` | Modell-Liste (von llama.cpp) |
 | `/api/status` | Add-on-Status fürs Panel |
+| `/api/memory` | Ambient-Kontext (Stufe 1) als JSON |
+| `/api/brain_test?q=...` | Manueller Test des Brain-Recalls (Stufe 2) |
+| TCP `10200` | Wyoming-TTS (Kokoro) — separat von Ingress, für HA/Voice-Satellites |
