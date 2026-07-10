@@ -29,7 +29,7 @@ from ha_client import HAClient
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 _LOG = logging.getLogger("home_voice")
 
-PORT = 8099                       # Ingress + LAN
+PORT = 8098                       # Ingress + LAN
 LLAMA_HOST = "127.0.0.1"          # llama-server nur intern
 LLAMA_PORT = 8080
 LLAMA_BASE = f"http://{LLAMA_HOST}:{LLAMA_PORT}"

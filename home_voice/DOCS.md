@@ -47,7 +47,8 @@ Beim **ersten Start** lädt das Add-on das gewählte LLM (~1–2,5 GB) nach
 1. Add-on starten, im Panel (Status-Tab) warten bis **Bereit = ja**.
 2. **Einstellungen → Geräte & Dienste → Integration hinzufügen → „OpenAI Conversation"**
    (oder eine kompatible lokale LLM-Integration).
-3. Als **Base-URL** eintragen: `http://<HA-IP>:8099/v1`
+3. Als **Base-URL** eintragen: `http://<HA-IP>:8098/v1`
+   (falls du den Host-Port im Add-on unter „Netzwerk" umgelegt hast, entsprechend anpassen)
    (API-Key beliebig, z. B. `local` — wird nicht geprüft).
 4. Unter **Einstellungen → Sprachassistenten** eine Pipeline anlegen und den neuen
    Conversation-Agent auswählen. Diese Pipeline kann jeder Voice-Satellite

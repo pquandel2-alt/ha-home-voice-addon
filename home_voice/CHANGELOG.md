@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2
+
+- **Port geändert:** Default-Port von 8099 auf **8098**, da 8099 bei manchen
+  Nutzern bereits belegt ist. Base-URL für die OpenAI-Conversation-Integration
+  ist jetzt `http://<HA-IP>:8098/v1`. Der Host-Port lässt sich davon unabhängig
+  im Add-on unter „Netzwerk" jederzeit frei umlegen.
+
 ## 0.2.1
 
 - **Fix:** `llama-server` startete nicht (`error while loading shared libraries:
