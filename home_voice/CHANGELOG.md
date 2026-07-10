@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+- **Fix:** `llama-server` startete nicht (`error while loading shared libraries:
+  libllama-server-impl.so`). Ursache: llama.cpp baut standardmäßig mehrere
+  Shared Libraries neben der Binary, die nicht mitkopiert wurden. Jetzt statisch
+  gelinkt (`BUILD_SHARED_LIBS=OFF`) — eine einzelne, selbstständige Binary.
+
 ## 0.2.0
 
 - **Absturz-Fix:** Beim ersten Test überlastete das Add-on CPU/RAM und brachte den

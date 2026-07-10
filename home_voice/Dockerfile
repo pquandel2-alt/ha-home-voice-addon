@@ -15,6 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # llama.cpp bauen — GGML_NATIVE=OFF + AVX2=ON: portabel, aber für den
 # Ziel-Mini-PC (Intel i5-12450H, AVX2 vorhanden) optimiert. Kein -march=native,
 # damit das Image auf dem HA-Build-Host reproduzierbar bleibt.
+# BUILD_SHARED_LIBS=OFF: llama.cpp baut sonst mehrere .so-Dateien (u.a.
+# libllama-server-impl.so) neben der Binary, die eine reine `cp` der Binary
+# nicht mitnimmt ("cannot open shared object file"). Statisches Linken macht
+# eine einzelne, selbstständige Binary daraus.
 # WICHTIG: -j auf max. 2 begrenzt (statt unbegrenzt = 1 Compiler-Prozess pro
 # Kern). Ein unbegrenzter Parallel-Build kann auf einer ressourcen-knappen
 # HA-VM den RAM sprengen und damit den ganzen Host (inkl. HA Core, da
@@ -24,6 +28,7 @@ RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp /tmp/llama.cpp \
         -DCMAKE_BUILD_TYPE=Release \
         -DGGML_NATIVE=OFF -DGGML_AVX2=ON \
         -DLLAMA_CURL=ON \
+        -DBUILD_SHARED_LIBS=OFF \
         -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
     && cmake --build /tmp/llama.cpp/build --config Release -j2 --target llama-server \
     && cp /tmp/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server \
