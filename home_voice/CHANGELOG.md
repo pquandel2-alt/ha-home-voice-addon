@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3
+
+- **Fix:** Modell-Download schlug fehl (`HTTPS is not supported`, `failed to
+  load model`). Der eingebaute HTTPS-Downloader von llama.cpp braucht ein
+  explizites TLS-Backend-Flag, das bisher fehlte. `libssl-dev` installiert und
+  `-DLLAMA_OPENSSL=ON` beim Build gesetzt.
+
 ## 0.2.2
 
 - **Port geändert:** Default-Port von 8099 auf **8098**, da 8099 bei manchen

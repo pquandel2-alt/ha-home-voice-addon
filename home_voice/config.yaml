@@ -1,5 +1,5 @@
 name: Home Voice
-version: "0.2.2"
+version: "0.2.3"
 slug: home_voice
 description: Lokaler LLM-Sprachassistent (Phi-4-mini via llama.cpp), OpenAI-kompatibel, mit Gedächtnis über Brain
 url: https://github.com/pquandel2-alt/ha-home-voice-addon

@@ -8,7 +8,7 @@ FROM $BUILD_FROM
 # was Image-Größe und RAM-/CPU-Last beim ersten Start deutlich reduziert.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake git ca-certificates \
-        libcurl4-openssl-dev libgomp1 \
+        libcurl4-openssl-dev libssl-dev libgomp1 \
         python3 python3-aiohttp \
     && rm -rf /var/lib/apt/lists/*
 
@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # libllama-server-impl.so) neben der Binary, die eine reine `cp` der Binary
 # nicht mitnimmt ("cannot open shared object file"). Statisches Linken macht
 # eine einzelne, selbstständige Binary daraus.
+# LLAMA_OPENSSL=ON: der eingebaute HTTPS-Downloader (--hf-repo/--hf-file)
+# braucht einen expliziten TLS-Backend-Flag, sonst bricht er mit
+# "HTTPS is not supported" ab, obwohl LLAMA_CURL=ON gesetzt ist.
 # WICHTIG: -j auf max. 2 begrenzt (statt unbegrenzt = 1 Compiler-Prozess pro
 # Kern). Ein unbegrenzter Parallel-Build kann auf einer ressourcen-knappen
 # HA-VM den RAM sprengen und damit den ganzen Host (inkl. HA Core, da
@@ -28,6 +31,7 @@ RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp /tmp/llama.cpp \
         -DCMAKE_BUILD_TYPE=Release \
         -DGGML_NATIVE=OFF -DGGML_AVX2=ON \
         -DLLAMA_CURL=ON \
+        -DLLAMA_OPENSSL=ON \
         -DBUILD_SHARED_LIBS=OFF \
         -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
     && cmake --build /tmp/llama.cpp/build --config Release -j2 --target llama-server \
